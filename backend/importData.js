@@ -5,14 +5,16 @@ const mongoose = require('mongoose');
 
 // --- Import ALL your models ---
 const Faculty = require('./models/Faculty');
-const Audit = require('./models/Audit'); // Use the correct model name
+const Audit = require('./models/Audit');
 const Academia = require('./models/Academia');
+const TimeTable = require('./models/TimeTable'); // <-- ADDED: Import TimeTable model
 
 // --- Configuration ---
 const MONGO_URI = 'mongodb://127.0.0.1:27017/facultyAuditDB';
 const ACADEMIA_CSV_PATH = path.join(__dirname, 'csv_data', 'academia.csv');
 const FACULTIES_CSV_PATH = path.join(__dirname, 'csv_data', 'faculties.csv');
 const AUDITS_CSV_PATH = path.join(__dirname, 'csv_data', 'audits.csv');
+const TIMETABLE_CSV_PATH = path.join(__dirname, 'csv_data', 'Timetable.csv'); // <-- ADDED: Path to your timetable file
 
 // Helper function to read a CSV file
 const readCSV = (filePath) => {
@@ -35,6 +37,7 @@ const importData = async () => {
         await Faculty.deleteMany({});
         await Audit.deleteMany({});
         await Academia.deleteMany({});
+        await TimeTable.deleteMany({}); // <-- ADDED: Clear old timetable data
         console.log('🧹 Cleared existing collections.');
 
         // --- STAGE 1: Import Academia Data ---
@@ -55,7 +58,7 @@ const importData = async () => {
         // --- STAGE 2: Import Faculties ---
         const facultiesData = await readCSV(FACULTIES_CSV_PATH);
         const facultiesToInsert = facultiesData.map(row => ({
-            facultyId: row.FacultyID, // Storing as String to match login logic
+            facultyId: row.FacultyID,
             name: row.Name,
             email: row.Email,
             password: 'defaultPassword123'
@@ -63,7 +66,12 @@ const importData = async () => {
         await Faculty.insertMany(facultiesToInsert);
         console.log(`🧑‍🏫 Imported ${facultiesData.length} faculties.`);
 
-        // --- STAGE 3: Import Audit Schedules (Corrected Logic) ---
+        // --- ADDED: STAGE 3: Import Timetable Data ---
+        const timetableData = await readCSV(TIMETABLE_CSV_PATH);
+        await TimeTable.insertMany(timetableData);
+        console.log(`🗓️  Imported ${timetableData.length} timetable entries.`);
+
+        // --- STAGE 4: Import Audit Schedules (was Stage 3) ---
         const auditsData = await readCSV(AUDITS_CSV_PATH);
         let createdAuditsCount = 0;
 
@@ -84,13 +92,11 @@ const importData = async () => {
             
             const venuesArray = auditRule.Venue.split(',').map(v => v.trim());
 
-            // Create a separate audit record for EACH date and EACH venue
             for (const academiaEntry of matchingAcademiaEntries) {
                 for (const venue of venuesArray) {
-                    // THE FIX IS HERE: We create an 'Audit' with the 'date' field
                     const newAudit = new Audit({
                         faculty: facultyDoc._id,
-                        date: academiaEntry.date, // <-- THIS IS THE CRITICAL FIX
+                        date: academiaEntry.date,
                         slot: auditRule.Slot.trim(),
                         roomNumber: venue
                     });
@@ -99,7 +105,7 @@ const importData = async () => {
                 }
             }
         }
-        console.log(`🗓️  Created ${createdAuditsCount} individual audit records.`);
+        console.log(`📝  Created ${createdAuditsCount} individual audit records.`);
 
         console.log('\n🎉 Data import completed successfully!');
 
