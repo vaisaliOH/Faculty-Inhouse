@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User, Mail, LogIn } from 'lucide-react';
-import { mockApi } from '../utils/mockApi';
+import axios from 'axios'; // 1. Import axios and remove mockApi
 
 const LoginPage: React.FC = () => {
   const [facultyId, setFacultyId] = useState('');
@@ -10,17 +10,38 @@ const LoginPage: React.FC = () => {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // 2. Renamed to handleLogin for clarity, but the core logic change is inside
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
-
+    console.log('Sending to backend:', { facultyId, email }); 
     try {
-      const faculty = await mockApi.loginFaculty(facultyId, email);
-      localStorage.setItem('faculty', JSON.stringify(faculty));
-      navigate('/faculty-dashboard');
-    } catch (err) {
-      setError('Invalid credentials. Please try again.');
+      // 3. This is the REAL API call that replaces your mockApi call
+      const response = await axios.post(
+        // The URL is built from your environment variable
+        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/login`, 
+        // The data being sent to the backend
+        {
+          facultyId,
+          email,
+        }
+      );
+
+      // 4. If the login is successful, the backend should send a token
+      if (response.data && response.data.token) {
+        localStorage.setItem('authToken', response.data.token);
+        if (response.data.user) {
+          localStorage.setItem('faculty', JSON.stringify(response.data.user));
+        }
+        navigate('/faculty-dashboard');
+      } else {
+        setError('Login successful, but no authentication token was received.');
+      }
+
+    } catch (err: any) {
+      // 5. This handles errors, like wrong credentials or server issues
+      setError(err.response?.data?.message || 'Invalid credentials. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -39,7 +60,8 @@ const LoginPage: React.FC = () => {
           <p className="mt-2 text-gray-400">Sign in to your account</p>
         </div>
 
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+        {/* 6. The form now calls handleLogin instead of handleSubmit */}
+        <form className="mt-8 space-y-6" onSubmit={handleLogin}>
           <div className="space-y-4">
             <div>
               <label htmlFor="facultyId" className="block text-sm font-medium text-[#E0E0E0] mb-2">

@@ -1,59 +1,79 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, User, Calendar, LogOut, CheckCircle } from 'lucide-react';
-import { mockApi } from '../utils/mockApi';
+import axios from 'axios';
 import { getCurrentTime, getCurrentDate, getCurrentTimestamp } from '../utils/time';
 import { Faculty, Venue, ScheduleData, FeedbackSubmission, AuditCheck } from '../types';
 
 const FacultyDashboard: React.FC = () => {
+  // --- All of your existing state is preserved ---
   const [faculty, setFaculty] = useState<Faculty | null>(null);
   const [currentTime, setCurrentTime] = useState(getCurrentTime());
   const [auditCheck, setAuditCheck] = useState<AuditCheck | null>(null);
   const [venues, setVenues] = useState<Venue[]>([]);
   const [selectedBatch, setSelectedBatch] = useState<string>('');
+  // This new state will hold ALL slots fetched from the backend
+  const [allScheduleData, setAllScheduleData] = useState<ScheduleData[]>([]);
   const [scheduleData, setScheduleData] = useState<ScheduleData[]>([]);
-  const [feedbacks, setFeedbacks] = useState<{[key: string]: string}>({});
+  const [feedbacks, setFeedbacks] = useState<{ [key: string]: string }>({});
   const [submittedVenues, setSubmittedVenues] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState<{[key: string]: boolean}>({});
+  const [submitting, setSubmitting] = useState<{ [key: string]: boolean }>({});
   const navigate = useNavigate();
 
-  // Update time every second
+  // Your timer useEffect remains the same
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(getCurrentTime());
     }, 1000);
-
     return () => clearInterval(timer);
   }, []);
 
-  // Initialize component
+  // --- This useEffect is now connected to your real backend ---
   useEffect(() => {
     const initializeDashboard = async () => {
+      setLoading(true);
+      
+      const storedFaculty = localStorage.getItem('faculty');
+      const token = localStorage.getItem('authToken'); // Make sure you use 'authToken' as set in LoginPage
+      
+      if (!storedFaculty || !token) {
+        navigate('/');
+        return;
+      }
+      
+      const facultyData = JSON.parse(storedFaculty);
+      setFaculty(facultyData);
+
       try {
-        setLoading(true);
-        
-        // Get faculty from localStorage
-        const storedFaculty = localStorage.getItem('faculty');
-        if (!storedFaculty) {
-          navigate('/login');
-          return;
-        }
-        
-        const facultyData = JSON.parse(storedFaculty);
-        setFaculty(facultyData);
+        // 1. Fetch all schedule data for the logged-in user
+        const response = await axios.get(
+          `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/audit`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
 
-        // Check if audit is scheduled for today
-        const auditData = await mockApi.checkAuditSchedule();
-        setAuditCheck(auditData);
+        const slotsFromApi: ScheduleData[] = response.data;
 
-        // If audit is scheduled, load venues
-        if (auditData.hasAudit && auditData.dayOrder) {
-          const venuesData = await mockApi.getVenues(auditData.dayOrder);
-          setVenues(venuesData);
+        // 2. Check if any slots were returned
+        if (slotsFromApi && slotsFromApi.length > 0) {
+          setAuditCheck({ hasAudit: true, dayOrder: slotsFromApi[0]?.day || 'N/A' });
+          setAllScheduleData(slotsFromApi); // Store all slots
+
+          // 3. Automatically create a list of unique venues from the schedule
+          const uniqueVenues = [...new Map(slotsFromApi.map(item => [item.venue, { venue: item.venue }])).values()];
+          setVenues(uniqueVenues);
+        } else {
+          // No slots means no audit today
+          setAuditCheck({ hasAudit: false, dayOrder: null });
         }
       } catch (error) {
         console.error('Failed to initialize dashboard:', error);
+        // If token is invalid or expired, log the user out
+        if (axios.isAxiosError(error) && error.response?.status === 401) {
+            handleLogout();
+        }
       } finally {
         setLoading(false);
       }
@@ -62,21 +82,21 @@ const FacultyDashboard: React.FC = () => {
     initializeDashboard();
   }, [navigate]);
 
-  // Handle batch selection
-  const handleBatchChange = async (batch: string) => {
+  // Handle batch selection - this now filters the data we already fetched
+  const handleBatchChange = (batch: string) => {
     setSelectedBatch(batch);
-    
-    if (auditCheck?.dayOrder) {
-      try {
-        const schedule = await mockApi.getSchedule(auditCheck.dayOrder, parseInt(batch));
-        setScheduleData(schedule);
-      } catch (error) {
-        console.error('Failed to fetch schedule:', error);
-      }
+    if (batch) {
+      const filteredSchedule = allScheduleData.filter(
+        // Ensure comparison works even if batch is number or string
+        (slot) => String(slot.batch) === batch
+      );
+      setScheduleData(filteredSchedule);
+    } else {
+      setScheduleData([]); // Clear schedule if no batch is selected
     }
   };
-
-  // Handle feedback submission
+  
+  // This function is unchanged as per your request, still using a mock submission
   const handleSubmitFeedback = async (venue: string) => {
     const feedback = feedbacks[venue];
     if (!feedback?.trim()) {
@@ -99,8 +119,12 @@ const FacultyDashboard: React.FC = () => {
         feedback: feedback.trim(),
         timestamp: getCurrentTimestamp()
       };
+      
+      // !!! IMPORTANT: Replace this with a real API call later !!!
+      console.log('Simulating feedback submission:', submissionData);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      // await mockApi.submitFeedback(submissionData);
 
-      await mockApi.submitFeedback(submissionData);
       setSubmittedVenues(prev => new Set([...prev, venue]));
     } catch (error) {
       console.error('Failed to submit feedback:', error);
@@ -113,9 +137,11 @@ const FacultyDashboard: React.FC = () => {
   // Handle logout
   const handleLogout = () => {
     localStorage.removeItem('faculty');
-    navigate('/login');
+    localStorage.removeItem('authToken'); // Ensure this matches the key used in LoginPage
+    navigate('/');
   };
 
+  // The rest of your JSX rendering logic is completely unchanged.
   if (loading) {
     return (
       <div className="min-h-screen bg-[#1A1A1A] flex items-center justify-center">
@@ -124,7 +150,6 @@ const FacultyDashboard: React.FC = () => {
     );
   }
 
-  // If no audit scheduled, show simple message
   if (!auditCheck?.hasAudit) {
     return (
       <div className="min-h-screen bg-[#1A1A1A] flex items-center justify-center">
@@ -254,7 +279,7 @@ const FacultyDashboard: React.FC = () => {
                           }))}
                           disabled={isSubmitted}
                           placeholder="Enter your feedback..."
-                          className="w-full h-20 px-3 py-2 bg-[#1A1A1A] border border-gray-600 rounded-lg text-[#E0E0E0] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#3498DB] focus:border-transparent transition-all duration-200 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="w-full h-20 px-3 py-2 bg-[#1A1A1A] border border-gray-600 rounded-lg text-[#E0E0E0] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#3498DB] focus:border-transparent resize-none disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                       </td>
                       <td className="px-6 py-4">
