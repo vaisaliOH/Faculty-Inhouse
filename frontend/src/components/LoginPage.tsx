@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User, Mail, LogIn } from 'lucide-react';
-import axios from 'axios'; // 1. Import axios and remove mockApi
+import axios from 'axios'; // 
 
 const LoginPage: React.FC = () => {
   const [facultyId, setFacultyId] = useState('');
@@ -10,16 +10,16 @@ const LoginPage: React.FC = () => {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  // 2. Renamed to handleLogin for clarity, but the core logic change is inside
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     console.log('Sending to backend:', { facultyId, email }); 
     try {
-      // 3. This is the REAL API call that replaces your mockApi call
+    
       const response = await axios.post(
-        // The URL is built from your environment variable
+        
         `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/login`, 
         // The data being sent to the backend
         {
@@ -28,7 +28,7 @@ const LoginPage: React.FC = () => {
         }
       );
 
-      // 4. If the login is successful, the backend should send a token
+      // If the login is successful, the backend should send a token
       if (response.data && response.data.token) {
         localStorage.setItem('authToken', response.data.token);
         if (response.data.user) {
@@ -40,7 +40,7 @@ const LoginPage: React.FC = () => {
       }
 
     } catch (err: any) {
-      // 5. This handles errors, like wrong credentials or server issues
+      //  This handles errors, like wrong credentials or server issues
       setError(err.response?.data?.message || 'Invalid credentials. Please try again.');
     } finally {
       setLoading(false);
